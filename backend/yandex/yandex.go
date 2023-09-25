@@ -1114,6 +1114,16 @@ func (o *Object) upload(ctx context.Context, in io.Reader, overwrite bool, mimeT
 //
 // The new object may have been created if an error is returned
 func (o *Object) Update(ctx context.Context, in io.Reader, src fs.ObjectInfo, options ...fs.OpenOption) error {
+	var hasRenamed bool
+	var originalRemote = o.filePath()
+	var originalFileName string
+
+	if strings.HasSuffix(o.remote, ".gz") {
+		originalFileName = o.remote
+		o.remote = strings.Replace(o.remote, ".gz", ".gztmp", 1)
+		hasRenamed = true
+	}
+
 	in1 := readers.NewCountingReader(in)
 	modTime := src.ModTime(ctx)
 	remote := o.filePath()
@@ -1128,6 +1138,14 @@ func (o *Object) Update(ctx context.Context, in io.Reader, src fs.ObjectInfo, op
 	err = o.upload(ctx, in1, true, fs.MimeType(ctx, src), options...)
 	if err != nil {
 		return err
+	}
+
+	if hasRenamed == true {
+		err := o.fs.copyOrMove(ctx, "move", remote, originalRemote, true)
+		if err != nil {
+			return err
+		}
+		o.remote = originalFileName
 	}
 
 	//if file uploaded successfully then return metadata
